@@ -11,7 +11,7 @@ API_SECRET = "API_SECRET"
 
 client = ApiClient(API_KEY, API_SECRET)
 
-def buildOrders(buyAmount, buyPrice, sellPrice):
+def buildBuyOrders(buyAmount, buyPrice, sellPrice):
     return{
     'buyID' : None,
     'buyStatue': None,
@@ -24,7 +24,40 @@ def buildOrders(buyAmount, buyPrice, sellPrice):
     'selledAmount' : 0,
     'sellOrders' : [],
     }
+# buyedAmount = sellAmount + selledAmount
 
+
+def buildSellOrder(buyOrder):
+    sellPrice = buyOrder['sellPrice']
+    sellAmount = buyOrder['buyedAmount']
+    sellOrder = {
+        'sellID': None,
+        'sellAmount': sellAmount,
+        'selledAmount': 0,
+    }
+    buyOrder['buyedAmount'] -= sellAmount
+    buyOrder['sellAmount'] += sellAmount
+    buyOrder['sellOrders'].append(sellOrder)
+
+def updateOrder(buyOrder):
+    getBuyOrderInfo(buyOrder['buyID'])
+    if xxx:
+        buildSellOrder()
+    for sellOrder in buyOrder['sellOrders']:
+        getSellOrderInfo(sellOrder)
+    
+
+
+def executeOrder(coin, bidPrice, askPrice):
+    order = coin['execOrder']
+    if askPrice <= order['sellPriceMin']:
+        print('---exit order---')
+        coin['execOrder'] = None
+    percent = round(0.996004*askPrice/bidPrice - 1, 4)
+    print('---------------%s---------------'%coin['symbol'])
+    print('%f %f %f'%(percent,bidPrice,askPrice))
+    print coin['execOrder']
+    
 # coin
 # bids: buy  price
 # asks: sell price
@@ -33,23 +66,15 @@ def onDepth(coin, bids, asks):
     askPrice,askAmount = asks
     bidPrice += coin['minPrice']*2
     askPrice -= coin['minPrice']*2
-    percent = round(0.996004*askPrice/bidPrice - 1, 4)
-    if coin['execOrder'] is not None:
-        order = coin['execOrder']
-        if askPrice <= order['sellPriceMin']:
-            print('---exit order---')
-            order = None 
-        print('---------------%s---------------'%coin['symbol'])
-        print('%f %f %f'%(percent,bidPrice,askPrice))
-        print order
-        return percent, order
-    buyAmount = 20/bidPrice
-    order = None
-    if percent > 0.001 and coin['execOrder'] is None:
-        order = buildOrders(buyAmount, bidPrice, askPrice)
-        print('---------------%s---------------'%coin['symbol'])
-        print('%f %f %f'%(percent,bidPrice,askPrice))
-    return percent, order
+    coin['percent'] = percent = round(0.996004*askPrice/bidPrice - 1, 4)
+    if coin['execOrder'] is None:
+        buyAmount = 20/bidPrice
+        if percent > 0.001 and coin['execOrder'] is None:
+            coin['execOrder'] = buildBuyOrders(buyAmount, bidPrice, askPrice)
+            print('---------------%s---------------'%coin['symbol'])
+            print('%f %f %f'%(percent,bidPrice,askPrice))
+    else:
+        executeOrder(coin, bidPrice, askPrice)
 
 def coinType(x):
     return {
@@ -68,7 +93,7 @@ def getDepth(coin):
         try:
             depth = client.mget('/market/depth', rkey='tick', symbol=coin['symbol'], type='step1')
             bids,asks = depth.bids[0],depth.asks[0]
-            coin['percent'], coin['execOrder'] = onDepth(coin, bids, asks)
+            onDepth(coin, bids, asks)
             return coin
         except:
             print('------------EXCEPT------------')
