@@ -9,12 +9,21 @@ from hbsdk import ApiClient, ApiError
 API_KEY = "API_KEY"
 API_SECRET = "API_SECRET"
 
+OrderBuy = 0
+OrderBuyed = 1
+OrderSelled = 2
+OrderCancel = 3
+
 client = ApiClient(API_KEY, API_SECRET)
+
+def timestamp():
+    return int(time.time())
 
 def buildBuyOrders(buyAmount, buyPrice, sellPrice):
     return{
+    'buyTime' : timestamp(),
     'buyID' : None,
-    'buyStatue': None,
+    'buyStatue': OrderBuy,
     'buyPrice' : buyPrice,
     'buyAmount' : buyAmount,
     'buyedAmount' : 0,
@@ -26,7 +35,7 @@ def buildBuyOrders(buyAmount, buyPrice, sellPrice):
     }
 # buyedAmount = sellAmount + selledAmount
 
-
+# buy Order
 def buildSellOrder(buyOrder):
     sellPrice = buyOrder['sellPrice']
     sellAmount = buyOrder['buyedAmount']
@@ -39,24 +48,22 @@ def buildSellOrder(buyOrder):
     buyOrder['sellAmount'] += sellAmount
     buyOrder['sellOrders'].append(sellOrder)
 
-def updateOrder(buyOrder):
-    getBuyOrderInfo(buyOrder['buyID'])
-    if xxx:
-        buildSellOrder()
-    for sellOrder in buyOrder['sellOrders']:
-        getSellOrderInfo(sellOrder)
-    
-
-
+# polling trade order
 def executeOrder(coin, bidPrice, askPrice):
+    curTime = timestamp()
     order = coin['execOrder']
-    if askPrice <= order['sellPriceMin']:
-        print('---exit order---')
+    if coin['buyStatue'] == OrderBuy:
+        updateBuyOrder()
+        sellNewOrder()
+        
+    if coin['buyStatue'] == OrderBuy and (askPrice <= order['sellPriceMin'] or curTime - order['buyTime'] > 300):
+        exitOrder()
+        coin['buyStatue'] = OrderCancel
+
+    updateSellOrder()
+
+    if coin['buyStatue'] == OrderSelled:
         coin['execOrder'] = None
-    percent = round(0.996004*askPrice/bidPrice - 1, 4)
-    print('---------------%s---------------'%coin['symbol'])
-    print('%f %f %f'%(percent,bidPrice,askPrice))
-    print coin['execOrder']
     
 # coin
 # bids: buy  price
@@ -68,8 +75,8 @@ def onDepth(coin, bids, asks):
     askPrice -= coin['minPrice']*2
     coin['percent'] = percent = round(0.996004*askPrice/bidPrice - 1, 4)
     if coin['execOrder'] is None:
-        buyAmount = 20/bidPrice
-        if percent > 0.001 and coin['execOrder'] is None:
+        if percent > 0.001:
+            buyAmount = 20/bidPrice
             coin['execOrder'] = buildBuyOrders(buyAmount, bidPrice, askPrice)
             print('---------------%s---------------'%coin['symbol'])
             print('%f %f %f'%(percent,bidPrice,askPrice))
@@ -114,3 +121,4 @@ def main():
         time.sleep(1)
 
 main()
+
