@@ -112,22 +112,23 @@ def onDepth(coin, bids, asks):
     askPrice,askAmount = asks
     pricePrecision = coin['price-precision']
     minPrice = 10**-pricePrecision
-    bidPrice += minPrice*5
-    askPrice -= minPrice*5
+    bidPrice += minPrice
+    askPrice -= minPrice
     bidPrice = RoundUp(bidPrice, pricePrecision)
     askPrice = RoundDown(askPrice, pricePrecision)
-    coin['percent'] = percent = round(0.996004*askPrice/bidPrice - 1, 4)
+    coin['percent'] = percent = round(0.995*askPrice/bidPrice - 1, 4)
     if coin['execOrder'] is None:
-        if percent > 0.001:
+        if percent >= 0.001:
             minAmount = coin['minAmount']
             buyAmount = minAmount*2
             if buyAmount*bidPrice > 10:
                 return
             amountPrecision = coin['amount-precision']
             buyAmount = RoundDown(buyAmount, amountPrecision)
+            sellExitPrice = RoundUp(bidPrice/0.995, pricePrecision)
             logger.info('---------------%s---------------'%coin['symbol'])
-            logger.info('%f %f %f %f'%(percent, bidPrice, askPrice, buyAmount))
-            coin['execOrder'] = buildBuyOrders(coin['symbol'], buyAmount, bidPrice, askPrice, RoundUp(bidPrice, pricePrecision))
+            logger.info('%f %f %f %f %f'%(percent, bidPrice, askPrice, buyAmount, sellExitPrice))
+            coin['execOrder'] = buildBuyOrders(coin['symbol'], buyAmount, bidPrice, askPrice, sellExitPrice)
     else:
         executeOrder(coin, bidPrice, askPrice)
 

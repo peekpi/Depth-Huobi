@@ -131,7 +131,8 @@ def coinType(x):
         'coin' : x['base-currency'],
         'money' : x['quote-currency'],
         'symbol' : x['base-currency'] + x['quote-currency'],
-        'minPrice': 10**-x['price-precision'],
+        'price-precision': x['price-precision'],
+        'amount-precision': x['amount-precision'],
         'minAmount': minAmount,
         'percent': 0,
         'execOrder' : None,
@@ -152,6 +153,7 @@ def getDepth(coin):
             time.sleep(1)
 
 def main():
+    print('----')
     allSymbol = client.mget('/v1/common/symbols')
     #coins = filter(lambda x:x['part'] == 'main' and x['money'] == 'usdt', map(coinType, allSymbol))
     coins = map(coinType, filter(lambda x:x['quote-currency'] == 'usdt', allSymbol))
