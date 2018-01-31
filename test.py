@@ -6,6 +6,9 @@ import time
 import hbClient as hbc
 from liveApi import liveLogger
 from hbsdk import ApiError
+import json
+
+from liveApi.commonApi import getKLineBar
 
 logger = liveLogger.getLiveLogger("strategy")
 
@@ -118,22 +121,29 @@ def onDepth(coin, bids, asks):
 
 @hbc.tryForever
 def coinType(x):
+    symbol = x['base-currency'] + x['quote-currency']
+    klines = client.mget('/market/history/kline', symbol=symbol, period='%dmin'%1, size=2000)
+    print '----%s %d'%(symbol, len(klines))
+    json.dump(klines, file('kline/%s-%d.txt'%(symbol, len(klines)), 'w'))
     minAmount = 10**-x['amount-precision']
     try:
-        broker.getMinAmount(x['base-currency'] + x['quote-currency'], minAmount)
+        broker.getMinAmount(symbol, minAmount)
     except ApiError, e:
         msgs = e.message.split(':')
         if msgs[0] == "order-limitorder-amount-min-error" and len(msgs) == 3:
             strAmount = msgs[-1].split('`')[1]
             minAmount = float(strAmount)
+    f = lambda x:round((10**(3-x))/4.0, x) if x else int((10**(3-x))/4.0)
+    minLoseAmount = f(x['amount-precision'])
     return {
         'part' : x['symbol-partition'],
         'coin' : x['base-currency'],
         'money' : x['quote-currency'],
-        'symbol' : x['base-currency'] + x['quote-currency'],
+        'symbol' : symbol,
         'price-precision': x['price-precision'],
         'amount-precision': x['amount-precision'],
         'minAmount': minAmount,
+        'minLoseAmount': minLoseAmount,
         'percent': 0,
         'execOrder' : None,
     }
@@ -156,6 +166,7 @@ def main():
     print('----')
     allSymbol = client.mget('/v1/common/symbols')
     #coins = filter(lambda x:x['part'] == 'main' and x['money'] == 'usdt', map(coinType, allSymbol))
+    #coins = map(coinType, filter(lambda x:x['quote-currency'] == 'usdt', allSymbol))
     coins = map(coinType, filter(lambda x:x['quote-currency'] == 'usdt', allSymbol))
     #coins = map(coinType, allSymbol)
     for x in coins:

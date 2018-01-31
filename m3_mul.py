@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+from multiprocessing.dummy import Pool
 import traceback
 import time
 import hbClient as hbc
@@ -205,11 +206,18 @@ def main():
     #coins = filter(lambda x:x['part'] == 'main' and x['money'] == 'usdt', map(coinType, allSymbol))
     coins = map(coinType, filter(lambda x:x['quote-currency'] == 'usdt', allSymbol))
     #coins = map(coinType, allSymbol)
+
+    pool = Pool(len(coins))
+    pool.map(ThreadRun, coins)
+    pool.close()
+    pool.join()
+    '''
     while True:
         logger.info('**********************************************')
         coins = map(getDepth, coins)
         coins.sort(key=lambda x:x['percent'], reverse=True)
         time.sleep(1)
+    '''
 
 main()
 

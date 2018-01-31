@@ -4,7 +4,6 @@
 import traceback
 import time
 import hbClient as hbc
-from hbsdk import ApiError
 from liveApi.liveUtils import *
 from liveApi import liveLogger
 
@@ -15,9 +14,8 @@ client = broker.getClient()
 
 OrderBuy = 0
 OrderBuyed = 1
-OrderFilledSelled = 2
-OrderExitSelled = 3
-OrderCancel = 4
+OrderSelled = 2
+OrderCancel = 3
 
 def timestamp():
     return int(time.time())
@@ -29,20 +27,20 @@ def showOrders(coin):
     logger.info('Order: %s'%order)
 
 
-def buildBuyOrders(symbol, buyAmount, buyPrice, sellPrice, sellPriceExit):
+def buildBuyOrders(symbol, buyAmount, buyPrice, sellPrice):
     order = broker.buyLimit(symbol, buyPrice, buyAmount)
     return{
-        'buyTime'       : timestamp(),
-        'buyID'         : order.getId(),
-        'buyStatue'     : OrderBuy,
-        'buyPrice'      : order.getPrice(),
-        'buyAmount'     : order.getAmount(),
-        'buyedAmount'   : 0,
-        'sellPrice'     : sellPrice,
-        'sellPriceMin'  : sellPriceExit,
-        'sellAmount'    : 0,
-        'selledAmount'  : 0,
-        'sellOrders'    : [],
+    'buyTime' : timestamp(),
+    'buyID' : order.getId(),
+    'buyStatue': OrderBuy,
+    'buyPrice' : order.getPrice(),
+    'buyAmount' : order.getAmount(),
+    'buyedAmount' : 0,
+    'sellPrice' : sellPrice,
+    'sellPriceMin' : buyPrice/0.996004,
+    'sellAmount' : 0,
+    'selledAmount' : 0,
+    'sellOrders' : [],
     }
 # buyedAmount = sellAmount
 
@@ -50,10 +48,10 @@ def buildBuyOrders(symbol, buyAmount, buyPrice, sellPrice, sellPriceExit):
 def buildSellOrder(symbol, amount, price):
     order = broker.sellLimit(symbol, price, amount)
     return {
-        'sellID'        : order.getId(),
-        'sellPrice'     : order.getPrice(),
-        'sellAmount'    : order.getAmount(),
-        'selledAmount'  : 0,
+        'sellID': order.getId(),
+        'sellPrice': order.getPrice(),
+        'sellAmount': order.getAmount(),
+        'selledAmount': 0,
     }
 
 def updateBuyOrder(order):
@@ -62,10 +60,9 @@ def updateBuyOrder(order):
     if orderInfo.isFilled():
         order['buyStatue'] = OrderBuyed   
 
-def updateSellOrder(symbol, order, price, amountPrecision, minAmount):
+def updateSellOrder(symbol, order, price):
     newAmount = order['buyedAmount'] - order['sellAmount']
-    newAmount = RoundDown(newAmount, amountPrecision)
-    if newAmount >= minAmount:
+    if newAmount:
         sellOrder = buildSellOrder(symbol, newAmount, price)
         order['sellOrders'].append(sellOrder)
         order['sellAmount'] += sellOrder['sellAmount']
@@ -77,11 +74,8 @@ def updateSellOrder(symbol, order, price, amountPrecision, minAmount):
             sellOrder['selledAmount'] = orderInfo.getBTC()
         selledAmount += sellOrder['selledAmount']
     order['selledAmount'] = selledAmount
-    if (order['buyStatue'] in (OrderBuyed, OrderCancel)) and order['buyedAmount'] - order['selledAmount'] < minAmount:
-        if order['buyStatue'] == OrderBuyed:
-            order['buyStatue'] = OrderFilledSelled
-        else:
-            order['buyStatue'] = OrderExitSelled
+    if (order['buyStatue'] in (OrderBuyed, OrderCancel)) and order['selledAmount'] == order['buyedAmount']:
+        order['buyStatue'] = OrderSelled
 
 def exitBuyOrder(order):
     broker.cancelOrder(order['buyID'])
@@ -93,20 +87,16 @@ def executeOrder(coin, bidPrice, askPrice):
     order = coin['execOrder']
     if order['buyStatue'] == OrderBuy:
         if askPrice <= order['sellPriceMin'] or curTime - order['buyTime'] > 300:
-            print('---askPrice:%f minPrice:%f curTiem:%d orderTime:%d'%(askPrice, order['sellPriceMin'], curTime, order['buyTime']))
             logger.info('exitBuyOrder: %s'%coin['symbol'])
             exitBuyOrder(order)
         logger.info('updateBuyOrder: %s'%coin['symbol'])
         updateBuyOrder(order)
 
-    amountPrecision = coin['amount-precision']
-    updateSellOrder(coin['symbol'], order, max(askPrice, order['sellPriceMin']), coin['amount-precision'], coin['minAmount'])
+    updateSellOrder(coin['symbol'], order, max(askPrice, order['sellPriceMin']))
     logger.info('updateSellOrder: %s'%coin['symbol'])
     logger.info('orderInfo: %s buy:%f filled:%f sell:%f filled:%f'%(coin['symbol'], order['buyAmount'], order['buyedAmount'], order['sellAmount'], order['selledAmount'] ))
         
-    if order['buyStatue'] in (OrderFilledSelled, OrderExitSelled):
-        if order['buyStatue'] == OrderFilledSelled:
-            coin['dealNum'] += 1
+    if order['buyStatue'] == OrderSelled:
         showOrders(coin)
         coin['execOrder'] = None
     
@@ -118,66 +108,32 @@ def onDepth(coin, bids, asks):
     askPrice,askAmount = asks
     pricePrecision = coin['price-precision']
     minPrice = 10**-pricePrecision
-    bidPrice += minPrice
-    askPrice -= minPrice
+    bidPrice += minPrice*5
+    askPrice -= minPrice*5
     bidPrice = RoundUp(bidPrice, pricePrecision)
     askPrice = RoundDown(askPrice, pricePrecision)
-    coin['percent'] = percent = round(0.995*askPrice/bidPrice - 1, 4)
+    coin['percent'] = percent = round(0.996004*askPrice/bidPrice - 1, 4)
     if coin['execOrder'] is None:
-        if percent >= 0.0008:
-            minAmount = coin['minAmount']
-            buyAmount = coin['minLoseAmount'] * coin['dealNum']
-                
-            if coin['dealNum'] == 0 or buyAmount < minAmount:
-                buyAmount = minAmount * 2
-
+        if percent > 0.001:
+            buyAmount = 1/bidPrice
             amountPrecision = coin['amount-precision']
             buyAmount = RoundDown(buyAmount, amountPrecision)
-            sellExitPrice = RoundUp(bidPrice/0.995, pricePrecision)
             logger.info('---------------%s---------------'%coin['symbol'])
-            logger.info('%f %f %f %f %f'%(percent, bidPrice, askPrice, buyAmount, sellExitPrice))
-
-            '''
-            if buyAmount*bidPrice > 20:
-                logger.info('exit because price:%s %s %s'%(coin['symbol'], buyAmount, bidPrice))
-                return
-            '''
-
-            coin['execOrder'] = buildBuyOrders(coin['symbol'], buyAmount, bidPrice, askPrice, sellExitPrice)
+            logger.info('%f %f %f %f'%(percent, bidPrice, askPrice, buyAmount))
+            coin['execOrder'] = buildBuyOrders(coin['symbol'], buyAmount, bidPrice, askPrice)
     else:
         executeOrder(coin, bidPrice, askPrice)
 
-@hbc.tryForever
 def coinType(x):
-    baseCurrency = x['base-currency']
-    quoteCurrency = x['quote-currency']
-    symbol = baseCurrency + quoteCurrency
-    amountPrecision = x['amount-precision']
-    minAmount = 10**-amountPrecision
-    try:
-        broker.getMinAmount(symbol, minAmount)
-    except ApiError, e:
-        msgs = e.message.split(':')
-        if msgs[0] == "order-limitorder-amount-min-error" and len(msgs) == 3:
-            strAmount = msgs[-1].split('`')[1]
-            minAmount = float(strAmount)
-
-    f = lambda x:round((10**(3-x))/2.0, x)
-    minLoseAmount = f(x['amount-precision'])
-    logger.info('%s : %s %s'%(symbol, minAmount, minLoseAmount))
-
     return {
-        'part'              : x['symbol-partition'],
-        'coin'              : baseCurrency,
-        'money'             : quoteCurrency,
-        'symbol'            : symbol,
-        'price-precision'   : x['price-precision'],
-        'amount-precision'  : amountPrecision,
-        'minAmount'         : minAmount,
-        'minLoseAmount'     : minLoseAmount,
-        'percent'           : 0,
-        'execOrder'         : None,
-        'dealNum'           : 0,
+        'part' : x['symbol-partition'],
+        'coin' : x['base-currency'],
+        'money' : x['quote-currency'],
+        'symbol' : x['base-currency'] + x['quote-currency'],
+        'price-precision' : x['price-precision'],
+        'amount-precision' : x['amount-precision'],
+        'percent': 0,
+        'execOrder' : None,
     }
 
 def getDepth(coin):
@@ -194,16 +150,10 @@ def getDepth(coin):
             logger.info('------------======------------')
             time.sleep(1)
 
-def ThreadRun(coin):
-    while True:
-        coin = getDepth(coin)
-        time.sleep(1)
-
 def main():
-    logger.info('******************GetSymbols******************')
     allSymbol = client.mget('/v1/common/symbols')
     #coins = filter(lambda x:x['part'] == 'main' and x['money'] == 'usdt', map(coinType, allSymbol))
-    coins = map(coinType, filter(lambda x:x['quote-currency'] == 'usdt', allSymbol))
+    coins = filter(lambda x:x['money'] == 'usdt', map(coinType, allSymbol))
     #coins = map(coinType, allSymbol)
     while True:
         logger.info('**********************************************')

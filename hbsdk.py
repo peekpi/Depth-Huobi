@@ -14,7 +14,8 @@ from datetime import datetime
 TIMEOUT = 5
 
 #API_HOST = 'be.huobi.com'
-API_HOST = 'api.huobi.pro'
+API_HOST = 'api.huobipro.com'
+#API_HOST = 'api.huobi.pro'
 
 SCHEME = 'https'
 
