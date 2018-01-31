@@ -19,6 +19,7 @@ OrderBuyed = 1
 OrderFilledSelled = 2
 OrderExitSelled = 3
 OrderCancel = 4
+OrderSell = 5
 
 def timestamp():
     return int(time.time())
@@ -55,6 +56,7 @@ def buildSellOrder(symbol, amount, price):
         'sellPrice'     : order.getPrice(),
         'sellAmount'    : order.getAmount(),
         'selledAmount'  : 0,
+        'sellStatus'    : OrderSell,
     }
 
 def updateBuyOrder(order):
@@ -62,6 +64,10 @@ def updateBuyOrder(order):
     order['buyedAmount'] = orderInfo.getBTC() - orderInfo.getFee()
     if orderInfo.isFilled():
         order['buyStatue'] = OrderBuyed   
+
+def exitSellOrders(orderIDs):
+    for oid in orderIDs:
+        broker.cancelOrder(oid)
 
 def updateSellOrder(symbol, order, price, amountPrecision, minAmount):
     newAmount = order['buyedAmount'] - order['sellAmount']
@@ -71,11 +77,18 @@ def updateSellOrder(symbol, order, price, amountPrecision, minAmount):
         order['sellOrders'].append(sellOrder)
         order['sellAmount'] += sellOrder['sellAmount']
     selledAmount = 0
+    cancelIds = []
     for sellOrder in order['sellOrders']:
-        # if filed then
-        if sellOrder['selledAmount'] < sellOrder['sellAmount']:
-            orderInfo = broker.getUserTransactions([sellOrder['sellID']])[0]
-            sellOrder['selledAmount'] = orderInfo.getBTC()
+        if sellOrder['sellStatus'] == OrderFilledSelled:
+            selledAmount += sellOrder['selledAmount']
+            continue
+        if sellOrder['sellPrice'] < price:
+            cancelIds.append(sellOrder['sellID'])
+            continue
+    exitSellOrders(cancelIds)
+
+        orderInfo = broker.getUserTransactions([sellOrder['sellID']])[0]
+        sellOrder['selledAmount'] = orderInfo.getBTC()
         selledAmount += sellOrder['selledAmount']
     order['selledAmount'] = selledAmount
     if (order['buyStatue'] in (OrderBuyed, OrderCancel)) and order['buyedAmount'] - order['selledAmount'] < minAmount:
@@ -101,16 +114,14 @@ def executeOrder(coin, bidPrice, askPrice):
         updateBuyOrder(order)
 
     amountPrecision = coin['amount-precision']
-    updateSellOrder(coin['symbol'], order, max(askPrice, order['sellPriceMin']), coin['amount-precision'], coin['minAmount'])
+    updateSellOrder(coin['symbol'], order, askPrice, coin['amount-precision'], coin['minAmount'])
     logger.info('updateSellOrder: %s'%coin['symbol'])
     logger.info('orderInfo: %s buy:%f filled:%f sell:%f filled:%f'%(coin['symbol'], order['buyAmount'], order['buyedAmount'], order['sellAmount'], order['selledAmount'] ))
-        
     if order['buyStatue'] in (OrderFilledSelled, OrderExitSelled):
         if order['buyStatue'] == OrderFilledSelled:
             coin['dealNum'] += 1
         showOrders(coin)
         coin['execOrder'] = None
-    
 # coin
 # bids: buy  price
 # asks: sell price
