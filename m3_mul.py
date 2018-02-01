@@ -70,27 +70,36 @@ def exitSellOrders(orderIDs):
         broker.cancelOrder(oid)
 
 def updateSellOrder(symbol, order, price, amountPrecision, minAmount):
-    newAmount = order['buyedAmount'] - order['sellAmount']
+    cancelIds = []
+    for sellOrder in order['sellOrders']:
+        if sellOrder['sellStatus'] == OrderSell and sellOrder['sellPrice'] > price:
+            sellOrder['sellStatus'] = OrderCancel
+            cancelIds.append(sellOrder['sellID'])
+    exitSellOrders(cancelIds)
+
+    openOrderAmount = 0
+    filledOrderAmount = 0
+    selledAmount = 0
+    for sellOrder in order['sellOrders']:
+        if sellOrder['sellStatus'] in (OrderSell, OrderCancel):
+            orderInfo = broker.getUserTransactions([sellOrder['sellID']])[0]
+            sellOrder['selledAmount'] = orderInfo.getBTC()
+            if sellOrder['sellStatus'] == OrderCancel:
+                sellOrder['sellStatus'] = OrderExitSelled
+        if sellOrder['sellStatus'] == OrderSell:
+            openOrderAmount += sellOrder['sellAmount']
+        else:
+            filledOrderAmount += sellOrder['selledAmount']
+        selledAmount += sellOrder['selledAmount']
+
+    order['selledAmount'] = selledAmount
+    newAmount = order['buyedAmount'] - openOrderAmount - filledOrderAmount
     newAmount = RoundDown(newAmount, amountPrecision)
     if newAmount >= minAmount:
         sellOrder = buildSellOrder(symbol, newAmount, price)
         order['sellOrders'].append(sellOrder)
-        order['sellAmount'] += sellOrder['sellAmount']
-    selledAmount = 0
-    cancelIds = []
-    for sellOrder in order['sellOrders']:
-        if sellOrder['sellStatus'] == OrderFilledSelled:
-            selledAmount += sellOrder['selledAmount']
-            continue
-        if sellOrder['sellPrice'] < price:
-            cancelIds.append(sellOrder['sellID'])
-            continue
-    exitSellOrders(cancelIds)
+        order['sellAmount'] = openOrderAmount + filledOrderAmount + newAmount
 
-        orderInfo = broker.getUserTransactions([sellOrder['sellID']])[0]
-        sellOrder['selledAmount'] = orderInfo.getBTC()
-        selledAmount += sellOrder['selledAmount']
-    order['selledAmount'] = selledAmount
     if (order['buyStatue'] in (OrderBuyed, OrderCancel)) and order['buyedAmount'] - order['selledAmount'] < minAmount:
         if order['buyStatue'] == OrderBuyed:
             order['buyStatue'] = OrderFilledSelled
@@ -106,7 +115,7 @@ def executeOrder(coin, bidPrice, askPrice):
     curTime = timestamp()
     order = coin['execOrder']
     if order['buyStatue'] == OrderBuy:
-        if askPrice <= order['sellPriceMin'] or curTime - order['buyTime'] > 300:
+        if askPrice <= order['sellPriceMin'] or curTime - order['buyTime'] > 120:
             print('---askPrice:%f minPrice:%f curTiem:%d orderTime:%d'%(askPrice, order['sellPriceMin'], curTime, order['buyTime']))
             logger.info('exitBuyOrder: %s'%coin['symbol'])
             exitBuyOrder(order)
