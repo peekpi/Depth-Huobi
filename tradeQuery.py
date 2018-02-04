@@ -8,8 +8,8 @@ import os
 broker = hbc.hbTradeClient()
 client = broker.getClient()
 
-sdate = dt.localize(datetime.datetime(2018, 1, 27, 20, 00), localTz)
-edate = dt.localize(datetime.datetime(2018, 1, 29, 20, 00), localTz)
+sdate = dt.localize(datetime.datetime(2018, 2, 3, 22, 16), localTz)
+edate = dt.localize(datetime.datetime(2018, 2, 4, 15, 00), localTz)
 stime = int(dt.datetime_to_timestamp(sdate))
 sdir =  'tradeOrders-%s'%sdate.strftime('%m%d_%H%M')
 print stime,sdate,sdir

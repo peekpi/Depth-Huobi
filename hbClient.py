@@ -121,6 +121,7 @@ class hbTradeClient(TradeClientBase):
             self.__client.post('/v1/order/orders/%s/submitcancel' % orderId)
         except:
             self.__checkOrderState(orderId, [hbOrderState.OrderCanceled, hbOrderState.OrderFilled])
+                
 
     def buyLimit(self, symbol, limitPrice, quantity):
         logger.info('buyLimit: %s %s %s'%(symbol, limitPrice, quantity))
@@ -153,10 +154,14 @@ class hbTradeClient(TradeClientBase):
             'source': 'api'
         })
         self.__activeOrder(order_id)
-        orderInfo = self.__checkOrderState(order_id, [hbOrderState.OrderSubmited, hbOrderState.OrderFilled])
+        while True:
+            try:
+                orderInfo = self.__checkOrderState(order_id, [hbOrderState.OrderSubmited, hbOrderState.OrderFilled])
+                break
+            except:
+                continue
         return orderInfo
 
-    @tryForever
     def __checkOrderState(self, orderid, states):
         orderInfo = self.__client.get('/v1/order/orders/%s' % orderid)
         if orderInfo.state in states:

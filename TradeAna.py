@@ -5,11 +5,11 @@ from liveApi.liveUtils import *
 from pyalgotrade.utils import dt
 import os
 
-sdate = dt.localize(datetime(2018, 1, 27, 20, 00), localTz)
+sdate = dt.localize(datetime(2018, 2, 3, 22, 16), localTz)
 sdir =  'tradeOrders-%s'%sdate.strftime('%m%d_%H%M')
 
 def getAllJsonFile(path):
-    return map(lambda x:os.path.join(path, x), os.listdir(path))
+    return map(lambda x:os.path.join(path, x), filter(lambda x:x.split('.')[-1]=='json', os.listdir(path)))
 
 def Str2float(func):
     def waper(*args, **kwargs):
@@ -49,7 +49,7 @@ class TradeInfo():
     def fromApi(self):
         return self.__d['source'] == 'api'
     def isFilled(self):
-        return self.__d['state'] == 'filled'
+        return self.__d['state'] in ['filled', 'partial-canceled']
 
 def getJson(name):
     return json.load(file(name, 'r'))
@@ -63,10 +63,10 @@ def cal(symbol):
     #obj = getJson('tradeOrders/cvcusdt.json')
     obj = map(TradeInfo, getJson(symbol))
     obj = filter(lambda x:x.fromApi() and x.isFilled(), obj)
-    if len(obj) < 5:
+    if len(obj) < 1:
         return
-    if obj[0].isBuy():
-        obj.pop(0)
+    #if obj[0].isBuy():
+    #    obj.pop(0)
     buyCash = 0
     sellCash = 0
     feeCash = 0
@@ -82,7 +82,7 @@ def cal(symbol):
     tb += buyCash
     ts += sellCash
     tf += feeCash
-    print('%s - %d buy:%f sell:%f fee:%f e:%f'%(symbol, len(obj), buyCash, sellCash, feeCash, sellCash-buyCash-feeCash))
+    print('%s - %d buy:%f sell:%f fee:%f e:%f te:%f'%(symbol, len(obj), buyCash, sellCash, feeCash, sellCash-buyCash-feeCash, ts-tb-tf))
 
 #cal('tradeOrders/sntusdt.json')
 #cal('tradeOrders/gntusdt.json')
